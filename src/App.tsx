@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Bot, LogOut, Settings, Smartphone, Activity, Shield, Globe, Plus, Phone } from 'lucide-react';
+import { Bot, LogOut, Settings, Smartphone, Activity, Shield, Globe, Plus, Phone, RefreshCw } from 'lucide-react';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 import { GoogleGenAI } from '@google/genai';
@@ -129,6 +129,19 @@ export default function App() {
     }
   };
 
+  const handleReconnect = async (sessionId: string) => {
+    try {
+      await fetch('/api/reconnect', { 
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sessionId })
+      });
+      fetchSessions();
+    } catch (err) {
+      console.error('Failed to reconnect', err);
+    }
+  };
+
   const handleLogout = async (sessionId: string) => {
     try {
       await fetch('/api/logout', { 
@@ -228,6 +241,13 @@ export default function App() {
                           </div>
                         </div>
                       </div>
+                      <button
+                        onClick={() => handleReconnect(session.id)}
+                        className="p-2 text-zinc-400 hover:text-emerald-400 hover:bg-emerald-400/10 rounded-lg transition-colors"
+                        title="Reconnect"
+                      >
+                        <RefreshCw className="w-5 h-5" />
+                      </button>
                       <button
                         onClick={() => handleLogout(session.id)}
                         className="p-2 text-zinc-400 hover:text-red-400 hover:bg-red-400/10 rounded-lg transition-colors"
