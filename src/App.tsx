@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Bot, LogOut, Settings, Smartphone, Phone, RefreshCw, Plus, Globe, Shield, Lock } from 'lucide-react';
+import { Bot, LogOut, Settings, Smartphone, Phone, RefreshCw, Plus, Globe, Shield, Lock, Activity, Copy, Check } from 'lucide-react';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 
@@ -26,14 +26,68 @@ export default function App() {
   
   const [config, setConfig] = useState({ prefix: '.', mode: 'public', autostatus: false, autostatusEmoji: '🗽' });
   const [savingConfig, setSavingConfig] = useState(false);
+  const [copied, setCopied] = useState(false);
 
-  const handleLogin = (e: React.FormEvent) => {
+  const handleCopy = () => {
+    navigator.clipboard.writeText(pairingCode);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     const cleanPhone = loginInput.replace(/\D/g, '');
-    if (cleanPhone) {
+    if (!cleanPhone) return;
+
+    setLoading(true);
+    setError('');
+    setPairingCode('');
+
+    try {
+      const res = await fetch('/api/pair', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ phoneNumber: cleanPhone }),
+      });
+      
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to request pairing code');
+      
+      if (!data.code) {
+        // Already connected or connecting
+        localStorage.setItem('vortex_phone', cleanPhone);
+        setLoggedInPhone(cleanPhone);
+        return;
+      }
+      
+      setPairingCode(data.code);
+      setPairingSessionId(data.sessionId);
+      
+      // Save to local storage but don't set loggedInPhone yet so they stay on this screen to see the code
       localStorage.setItem('vortex_phone', cleanPhone);
-      setLoggedInPhone(cleanPhone);
       setPhoneNumber(cleanPhone);
+      
+      // Start polling for this specific session until connected
+      const checkInterval = setInterval(async () => {
+        try {
+          const sRes = await fetch(`/api/sessions?phone=${cleanPhone}`);
+          if (sRes.ok) {
+            const sData = await sRes.json();
+            const session = sData.find((s: Session) => s.id === data.sessionId);
+            if (session && session.status === 'connected') {
+              clearInterval(checkInterval);
+              setLoggedInPhone(cleanPhone);
+              setPairingCode('');
+              setPairingSessionId('');
+            }
+          }
+        } catch (e) {}
+      }, 3000);
+
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -161,13 +215,14 @@ export default function App() {
   if (!loggedInPhone) {
     return (
       <div className="min-h-screen bg-zinc-950 flex flex-col items-center justify-center p-4 text-zinc-100 font-sans selection:bg-emerald-500/30">
-        <div className="w-full max-w-md bg-zinc-900/50 border border-zinc-800/50 rounded-3xl p-8 shadow-2xl backdrop-blur-xl">
+        <div className="w-full max-w-md bg-zinc-900/50 border border-zinc-800/50 rounded-3xl p-8 shadow-2xl backdrop-blur-xl relative overflow-hidden">
+          <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-emerald-500/0 via-emerald-500/50 to-emerald-500/0" />
           <div className="flex flex-col items-center text-center mb-8">
             <div className="w-16 h-16 rounded-2xl bg-emerald-500/10 flex items-center justify-center border border-emerald-500/20 mb-6">
               <Bot className="w-8 h-8 text-emerald-400" />
             </div>
-            <h1 className="text-2xl font-bold tracking-tight mb-2">Vortex-MD Panel</h1>
-            <p className="text-zinc-400 text-sm">Enter your WhatsApp number to access your dashboard.</p>
+            <h1 className="text-2xl font-bold tracking-tight mb-2">Deploy Vortex-MD</h1>
+            <p className="text-zinc-400 text-sm">Link your WhatsApp account to start using the bot. You will receive a pairing code.</p>
           </div>
 
           <form onSubmit={handleLogin} className="space-y-6">
@@ -184,17 +239,59 @@ export default function App() {
                   placeholder="e.g. 33612345678"
                   className="w-full bg-zinc-950 border border-zinc-800 rounded-2xl py-4 pl-12 pr-4 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50 transition-all"
                   required
+                  disabled={loading}
                 />
               </div>
             </div>
+
+            {error && (
+              <div className="p-4 rounded-2xl bg-red-500/10 border border-red-500/20 text-red-400 text-sm font-medium">
+                {error}
+              </div>
+            )}
+
             <button
               type="submit"
-              className="w-full bg-emerald-500 hover:bg-emerald-400 text-zinc-950 font-semibold py-4 rounded-2xl transition-all hover:scale-[1.02] active:scale-[0.98] flex items-center justify-center gap-2"
+              disabled={loading || !loginInput}
+              className="w-full bg-emerald-500 hover:bg-emerald-400 text-zinc-950 font-bold py-4 rounded-2xl transition-all hover:scale-[1.02] active:scale-[0.98] disabled:opacity-50 disabled:hover:scale-100 flex items-center justify-center gap-2"
             >
-              <Lock className="w-5 h-5" />
-              Access Dashboard
+              {loading ? (
+                <>
+                  <div className="w-5 h-5 border-2 border-zinc-950/30 border-t-zinc-950 rounded-full animate-spin" />
+                  Generating Code...
+                </>
+              ) : (
+                <>
+                  <Plus className="w-5 h-5" />
+                  Get Pairing Code
+                </>
+              )}
             </button>
           </form>
+
+          {pairingCode && (
+            <div className="mt-8 p-6 sm:p-8 rounded-3xl bg-zinc-950 border border-zinc-800 text-center animate-in fade-in slide-in-from-bottom-4 duration-500 shadow-xl">
+              <p className="text-sm font-medium text-zinc-400 mb-4">Enter this code in WhatsApp:</p>
+              <div className="text-4xl sm:text-5xl font-mono font-bold tracking-[0.2em] sm:tracking-[0.25em] text-emerald-400 bg-emerald-500/10 py-5 sm:py-6 rounded-2xl border border-emerald-500/20 shadow-[inset_0_0_20px_rgba(52,211,153,0.05)] break-all">
+                {pairingCode}
+              </div>
+              <button 
+                onClick={handleCopy}
+                className={cn(
+                  "mt-4 flex items-center justify-center gap-2 w-full py-3.5 rounded-xl transition-all font-semibold text-sm",
+                  copied 
+                    ? "bg-emerald-500/20 text-emerald-400 border border-emerald-500/30" 
+                    : "bg-zinc-800/50 hover:bg-zinc-800 text-zinc-300 border border-zinc-700/50"
+                )}
+              >
+                {copied ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
+                {copied ? 'Copied to clipboard!' : 'Copy Code'}
+              </button>
+              <p className="text-sm font-medium text-emerald-500/70 mt-6 animate-pulse">
+                Waiting for connection...
+              </p>
+            </div>
+          )}
         </div>
       </div>
     );
@@ -205,20 +302,20 @@ export default function App() {
   return (
     <div className="min-h-screen bg-zinc-950 text-zinc-100 font-sans selection:bg-emerald-500/30">
       <header className="border-b border-zinc-800/50 bg-zinc-900/80 backdrop-blur-xl sticky top-0 z-50">
-        <div className="max-w-6xl mx-auto px-6 h-20 flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <div className="w-10 h-10 rounded-xl bg-emerald-500/10 flex items-center justify-center border border-emerald-500/20">
-              <Bot className="w-6 h-6 text-emerald-400" />
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 h-16 sm:h-20 flex items-center justify-between">
+          <div className="flex items-center gap-3 sm:gap-4">
+            <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-xl bg-emerald-500/10 flex items-center justify-center border border-emerald-500/20">
+              <Bot className="w-5 h-5 sm:w-6 sm:h-6 text-emerald-400" />
             </div>
             <div>
-              <h1 className="font-bold tracking-tight text-lg leading-tight">Vortex-MD Panel</h1>
-              <p className="text-xs text-zinc-500">+{loggedInPhone}</p>
+              <h1 className="font-bold tracking-tight text-base sm:text-lg leading-tight">Vortex-MD Panel</h1>
+              <p className="text-[10px] sm:text-xs text-zinc-500">+{loggedInPhone}</p>
             </div>
           </div>
           
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-2 sm:gap-4">
             <div className={cn(
-              "flex items-center gap-2 px-4 py-2 rounded-full text-xs font-semibold border",
+              "flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-1.5 sm:py-2 rounded-full text-[10px] sm:text-xs font-semibold border",
               connectedCount > 0 ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20" :
               "bg-zinc-800/50 text-zinc-400 border-zinc-700/50"
             )}>
@@ -239,10 +336,10 @@ export default function App() {
         </div>
       </header>
 
-      <main className="max-w-6xl mx-auto px-6 py-12">
-        <div className="grid lg:grid-cols-[1fr_400px] gap-8 items-start">
+      <main className="max-w-6xl mx-auto px-4 sm:px-6 py-6 sm:py-12">
+        <div className="grid lg:grid-cols-[1fr_400px] gap-6 sm:gap-8 items-start">
           
-          <div className="space-y-8">
+          <div className="space-y-6 sm:space-y-8">
             {sessions.length > 0 && (
               <div className="space-y-4">
                 <h2 className="text-xl font-bold tracking-tight flex items-center gap-2">
@@ -251,10 +348,10 @@ export default function App() {
                 </h2>
                 <div className="grid gap-4">
                   {sessions.map(session => (
-                    <div key={session.id} className="bg-zinc-900/40 border border-zinc-800/50 rounded-3xl p-6 flex items-center justify-between hover:bg-zinc-900/60 transition-colors">
-                      <div className="flex items-center gap-5">
+                    <div key={session.id} className="bg-zinc-900/40 border border-zinc-800/50 rounded-3xl p-5 sm:p-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4 hover:bg-zinc-900/60 transition-colors">
+                      <div className="flex items-center gap-4 sm:gap-5">
                         <div className={cn(
-                          "w-14 h-14 rounded-2xl flex items-center justify-center border",
+                          "w-12 h-12 sm:w-14 sm:h-14 rounded-2xl flex items-center justify-center border shrink-0",
                           session.status === 'connected' ? "bg-emerald-500/10 border-emerald-500/20 shadow-[0_0_15px_rgba(52,211,153,0.1)]" :
                           session.status === 'connecting' ? "bg-amber-500/10 border-amber-500/20" :
                           "bg-zinc-800/50 border-zinc-700/50"
@@ -279,20 +376,22 @@ export default function App() {
                           </div>
                         </div>
                       </div>
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-2 self-end sm:self-auto w-full sm:w-auto mt-2 sm:mt-0 pt-4 sm:pt-0 border-t sm:border-0 border-zinc-800/50">
                         <button
                           onClick={() => handleReconnect(session.id)}
-                          className="p-3 text-zinc-400 hover:text-emerald-400 hover:bg-emerald-400/10 rounded-xl transition-colors"
+                          className="flex-1 sm:flex-none flex items-center justify-center gap-2 p-3 text-zinc-400 hover:text-emerald-400 hover:bg-emerald-400/10 rounded-xl transition-colors"
                           title="Reconnect"
                         >
                           <RefreshCw className="w-5 h-5" />
+                          <span className="sm:hidden text-sm font-medium">Reconnect</span>
                         </button>
                         <button
                           onClick={() => handleLogout(session.id)}
-                          className="p-3 text-zinc-400 hover:text-red-400 hover:bg-red-400/10 rounded-xl transition-colors"
+                          className="flex-1 sm:flex-none flex items-center justify-center gap-2 p-3 text-zinc-400 hover:text-red-400 hover:bg-red-400/10 rounded-xl transition-colors"
                           title="Disconnect"
                         >
                           <LogOut className="w-5 h-5" />
+                          <span className="sm:hidden text-sm font-medium">Disconnect</span>
                         </button>
                       </div>
                     </div>
@@ -302,10 +401,10 @@ export default function App() {
             )}
 
             {sessions.length === 0 && (
-              <div className="bg-zinc-900/40 border border-zinc-800/50 rounded-3xl p-8 relative overflow-hidden">
+              <div className="bg-zinc-900/40 border border-zinc-800/50 rounded-3xl p-6 sm:p-8 relative overflow-hidden">
                 <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-emerald-500/0 via-emerald-500/50 to-emerald-500/0" />
-                <div className="max-w-md">
-                  <h2 className="text-2xl font-bold tracking-tight mb-3">Deploy Vortex-MD</h2>
+                <div className="max-w-md mx-auto sm:mx-0">
+                  <h2 className="text-xl sm:text-2xl font-bold tracking-tight mb-3">Deploy Vortex-MD</h2>
                   <p className="text-zinc-400 text-sm mb-8 leading-relaxed">
                     Link your WhatsApp account to start using the bot. You will receive a pairing code to enter in your WhatsApp linked devices.
                   </p>
@@ -354,11 +453,23 @@ export default function App() {
                   </form>
 
                   {pairingCode && (
-                    <div className="mt-8 p-8 rounded-3xl bg-zinc-950 border border-zinc-800 text-center animate-in fade-in slide-in-from-bottom-4 duration-500 shadow-xl">
+                    <div className="mt-8 p-6 sm:p-8 rounded-3xl bg-zinc-950 border border-zinc-800 text-center animate-in fade-in slide-in-from-bottom-4 duration-500 shadow-xl">
                       <p className="text-sm font-medium text-zinc-400 mb-4">Enter this code in WhatsApp:</p>
-                      <div className="text-5xl font-mono font-bold tracking-[0.25em] text-emerald-400 bg-emerald-500/10 py-6 rounded-2xl border border-emerald-500/20 shadow-[inset_0_0_20px_rgba(52,211,153,0.05)]">
+                      <div className="text-4xl sm:text-5xl font-mono font-bold tracking-[0.2em] sm:tracking-[0.25em] text-emerald-400 bg-emerald-500/10 py-5 sm:py-6 rounded-2xl border border-emerald-500/20 shadow-[inset_0_0_20px_rgba(52,211,153,0.05)] break-all">
                         {pairingCode}
                       </div>
+                      <button 
+                        onClick={handleCopy}
+                        className={cn(
+                          "mt-4 flex items-center justify-center gap-2 w-full py-3.5 rounded-xl transition-all font-semibold text-sm",
+                          copied 
+                            ? "bg-emerald-500/20 text-emerald-400 border border-emerald-500/30" 
+                            : "bg-zinc-800/50 hover:bg-zinc-800 text-zinc-300 border border-zinc-700/50"
+                        )}
+                      >
+                        {copied ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
+                        {copied ? 'Copied to clipboard!' : 'Copy Code'}
+                      </button>
                       <p className="text-sm font-medium text-emerald-500/70 mt-6 animate-pulse">
                         Waiting for connection...
                       </p>
@@ -370,8 +481,8 @@ export default function App() {
           </div>
 
           <div className="space-y-6">
-            <div className="bg-zinc-900/40 border border-zinc-800/50 rounded-3xl p-8">
-              <div className="flex items-center gap-3 mb-8">
+            <div className="bg-zinc-900/40 border border-zinc-800/50 rounded-3xl p-6 sm:p-8">
+              <div className="flex items-center gap-3 mb-6 sm:mb-8">
                 <div className="p-2 rounded-xl bg-zinc-800/50">
                   <Settings className="w-5 h-5 text-zinc-300" />
                 </div>

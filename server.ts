@@ -11,7 +11,6 @@ import ytdl from '@distube/ytdl-core';
 import ffmpeg from 'fluent-ffmpeg';
 import ffmpegInstaller from '@ffmpeg-installer/ffmpeg';
 import schedule from 'node-schedule';
-import TelegramBot from 'node-telegram-bot-api';
 import { createCanvas, loadImage } from 'canvas';
 import gis from 'g-i-s';
 import { GoogleGenAI } from '@google/genai';
@@ -334,6 +333,19 @@ const commands = [
     { name: 'yeet', emoji: '🚀', module: 'Anime' },
     { name: 'blush', emoji: '😳', module: 'Anime' },
     { name: 'smile', emoji: '😊', module: 'Anime' },
+    { name: 'wave', emoji: '👋', module: 'Anime' },
+    { name: 'highfive', emoji: '🙌', module: 'Anime' },
+    { name: 'handhold', emoji: '🤝', module: 'Anime' },
+    { name: 'nom', emoji: '😋', module: 'Anime' },
+    { name: 'bite', emoji: '🦷', module: 'Anime' },
+    { name: 'glare', emoji: '😠', module: 'Anime' },
+    { name: 'bully', emoji: '😈', module: 'Anime' },
+    { name: 'poke', emoji: '👉', module: 'Anime' },
+    { name: 'wink', emoji: '😉', module: 'Anime' },
+    { name: 'dance', emoji: '💃', module: 'Anime' },
+    { name: 'cringe', emoji: '😬', module: 'Anime' },
+    { name: 'megumin', emoji: '💥', module: 'Anime' },
+    { name: 'awoo', emoji: '🐺', module: 'Anime' },
 ];
 
 declare global {
@@ -434,7 +446,7 @@ async function startBot(sessionId: string, phoneNumber?: string): Promise<string
         sessions.set(sessionId, session);
     }
 
-    if (session.status === 'connecting') return null;
+    if (session.status === 'connecting' || session.status === 'connected') return null;
     session.status = 'connecting';
 
     const { state, saveCreds } = await useMultiFileAuthState(`sessions/${sessionId}`);
@@ -467,15 +479,19 @@ async function startBot(sessionId: string, phoneNumber?: string): Promise<string
         } else if (connection === 'open') {
             session!.status = 'connected';
             console.log(`Session ${sessionId} connected to WhatsApp!`);
-            try {
-                const id = sock.user.id.split(':')[0] + '@s.whatsapp.net';
-                if (!session!.isReconnecting) {
-                    await sock.sendMessage(id, { text: '🌸🚀 VORTEX-MD CONNECTED SUCCESSFULLY ✅ Connection to WhatsApp established.⚡ All systems are now online and operational.' });
+            session!.isReconnecting = false;
+            
+            // Wait a bit for the connection to fully synchronize before sending the welcome message
+            setTimeout(async () => {
+                try {
+                    const id = sock.user.id.split(':')[0] + '@s.whatsapp.net';
+                    await sock.sendMessage(id, { 
+                        text: '🌸🚀 *VORTEX-MD CONNECTED SUCCESSFULLY* ✅\n\nConnection to WhatsApp established.⚡ All systems are now online and operational.\n\nType `.menu` to see available commands.' 
+                    });
+                } catch (err) {
+                    console.error('Failed to send welcome message:', err);
                 }
-                session!.isReconnecting = false;
-            } catch (err) {
-                console.error('Failed to send welcome message:', err);
-            }
+            }, 5000);
         }
     });
 
@@ -783,7 +799,41 @@ async function startBot(sessionId: string, phoneNumber?: string): Promise<string
                 mentionedJid.push(quotedMessage);
             }
 
-            if (cmd === 'ping' || cmd === 'speed') {
+            if (cmd === 'public') {
+                if (!isFromMe) return await reply('❌ Seul le propriétaire du bot peut utiliser cette commande.', msg);
+                config.mode = 'public';
+                saveConfig(sessionId, config);
+                await reply('✅ Le bot est maintenant en mode PUBLIC. Tout le monde peut utiliser les commandes.', msg);
+            } else if (cmd === 'private') {
+                if (!isFromMe) return await reply('❌ Seul le propriétaire du bot peut utiliser cette commande.', msg);
+                config.mode = 'private';
+                saveConfig(sessionId, config);
+                await reply('✅ Le bot est maintenant en mode PRIVÉ. Seul le propriétaire peut utiliser les commandes.', msg);
+            } else if (cmd === 'broadcast' || cmd === 'bc') {
+                if (!isFromMe) return await reply('❌ Seul le propriétaire du bot peut utiliser cette commande.', msg);
+                if (args.length === 0) return await reply(`❌ Usage: ${config.prefix}bc <message>`, msg);
+                const bcMsg = args.join(' ');
+                await reply('⏳ Envoi du broadcast en cours...', msg);
+                
+                try {
+                    // Get all chats
+                    const chats = await sock.groupFetchAllParticipating();
+                    const groupIds = Object.keys(chats);
+                    let success = 0;
+                    for (const id of groupIds) {
+                        try {
+                            await sock.sendMessage(id, { text: `📢 *BROADCAST*\n\n${bcMsg}` });
+                            success++;
+                            await new Promise(resolve => setTimeout(resolve, 500)); // Rate limiting
+                        } catch (e) {
+                            console.error(`Failed to broadcast to ${id}:`, e);
+                        }
+                    }
+                    await reply(`✅ Broadcast envoyé à ${success} groupes.`, msg);
+                } catch (e) {
+                    await reply('❌ Erreur lors du broadcast.', msg);
+                }
+            } else if (cmd === 'ping' || cmd === 'speed') {
                 const start = Date.now();
                 const sentMsg = await reply('Pong ! 🏓', msg);
                 const end = Date.now();
@@ -1208,6 +1258,59 @@ async function startBot(sessionId: string, phoneNumber?: string): Promise<string
                 await reply(`👑 *Owner Info*\n\nName: Samy Charles\nRole: Creator of Vortex-MD\nStatus: Active`, msg);
             } else if (cmd === 'rules') {
                 await reply(`📋 *Vortex-MD Rules*\n\n1. Do not spam commands.\n2. Do not use the bot for illegal activities.\n3. Respect other users.\n4. Have fun!`, msg);
+            } else if (cmd === 'imagine') {
+                if (args.length === 0) return await reply(`❌ Usage: ${config.prefix}imagine <prompt> [--ratio 16:9]`, msg);
+                let prompt = args.join(' ');
+                
+                let aspectRatio = "1:1";
+                
+                // Parse ratio
+                const ratioMatch = prompt.match(/--ratio\s+([0-9:]+)/);
+                if (ratioMatch) {
+                    const validRatios = ["1:1", "3:4", "4:3", "9:16", "16:9"];
+                    if (validRatios.includes(ratioMatch[1])) {
+                        aspectRatio = ratioMatch[1];
+                        prompt = prompt.replace(ratioMatch[0], '').trim();
+                    } else {
+                        return await reply(`❌ Invalid ratio. Valid options are: ${validRatios.join(', ')}`, msg);
+                    }
+                }
+                
+                await reply(`⏳ Generating image (${aspectRatio}), please wait...`, msg);
+                try {
+                    const ai = getAi();
+                    const response = await ai.models.generateContent({
+                        model: 'gemini-2.5-flash-image',
+                        contents: {
+                            parts: [
+                                { text: prompt }
+                            ]
+                        },
+                        config: {
+                            imageConfig: {
+                                aspectRatio: aspectRatio as any
+                            }
+                        }
+                    });
+                    
+                    let base64Image = null;
+                    for (const part of response.candidates?.[0]?.content?.parts || []) {
+                        if (part.inlineData) {
+                            base64Image = part.inlineData.data;
+                            break;
+                        }
+                    }
+                    
+                    if (base64Image) {
+                        const buffer = Buffer.from(base64Image, 'base64');
+                        await sock.sendMessage(msg.key.remoteJid, { image: buffer, caption: `✨ Generated by Vortex-MD\n\nPrompt: ${prompt}` }, { quoted: msg });
+                    } else {
+                        await reply('❌ Failed to generate image from the prompt.', msg);
+                    }
+                } catch (e: any) {
+                    console.error('Imagine error:', e);
+                    await reply(`❌ Error generating image: ${e.message}`, msg);
+                }
             } else if (cmd === 'sticker' || cmd === 's') {
                 const isQuotedImage = msg.message.extendedTextMessage?.contextInfo?.quotedMessage?.imageMessage;
                 const isQuotedVideo = msg.message.extendedTextMessage?.contextInfo?.quotedMessage?.videoMessage;
@@ -1828,7 +1931,7 @@ async function startBot(sessionId: string, phoneNumber?: string): Promise<string
                 } catch (e) {
                     await reply('❌ Failed to fetch waifu image.');
                 }
-            } else if (['neko', 'husbando', 'kitsune', 'hug', 'kiss', 'pat', 'slap', 'cuddle', 'cry', 'smug', 'bonk', 'yeet', 'blush', 'smile'].includes(cmd || '')) {
+            } else if (['neko', 'husbando', 'kitsune', 'hug', 'kiss', 'pat', 'slap', 'cuddle', 'cry', 'smug', 'bonk', 'yeet', 'blush', 'smile', 'wave', 'highfive', 'handhold', 'nom', 'bite', 'glare', 'bully', 'poke', 'wink', 'dance', 'cringe', 'megumin', 'awoo'].includes(cmd || '')) {
                 try {
                     // Map some commands to valid waifu.pics endpoints if they differ
                     let endpoint = cmd;
@@ -1837,10 +1940,19 @@ async function startBot(sessionId: string, phoneNumber?: string): Promise<string
                     
                     const res = await axios.get(`https://api.waifu.pics/sfw/${endpoint}`);
                     const url = res.data.url;
+                    
                     if (url.endsWith('.gif')) {
-                        await sock.sendMessage(msg.key.remoteJid, { video: { url }, gifPlayback: true, caption: `✨ ${cmd} ✨` });
+                        // Convert GIF to animated sticker so it plays correctly on WhatsApp
+                        const sticker = new Sticker(url, {
+                            pack: 'Vortex-MD',
+                            author: 'Samy Charles',
+                            type: StickerTypes.FULL,
+                            quality: 50
+                        });
+                        const buffer = await sticker.toBuffer();
+                        await sock.sendMessage(msg.key.remoteJid, { sticker: buffer }, { quoted: msg });
                     } else {
-                        await sock.sendMessage(msg.key.remoteJid, { image: { url }, caption: `✨ ${cmd} ✨` });
+                        await sock.sendMessage(msg.key.remoteJid, { image: { url }, caption: `✨ ${cmd} ✨` }, { quoted: msg });
                     }
                 } catch (e) {
                     await reply(`❌ Failed to fetch ${cmd} image.`);
@@ -1988,126 +2100,6 @@ app.post('/api/config', (req, res) => {
     if (autostatusEmoji !== undefined) config.autostatusEmoji = autostatusEmoji;
     saveConfig(phone, config);
     res.json({ success: true, config });
-});
-
-// --- TELEGRAM BOT INTEGRATION ---
-const telegramToken = '8729949984:AAEHlvvDNQN6Lto22Dx7xDOQhR9Y1zLBxGc';
-const tgBot = new TelegramBot(telegramToken, { polling: true });
-
-tgBot.on('polling_error', (error) => {
-    console.error('Telegram Bot Polling Error:', error);
-});
-
-tgBot.onText(/\/start/, (msg) => {
-    const chatId = msg.chat.id;
-    const menu = `╭═ C O N T R O L  P A N E L ═╮
-┃ ⚡ Status   : Online
-┃ 🚀 Capacity : 100 Sessions
-╰══════════════════
-
-╭════ C O M M A N D S ════╮
-┃ 🔹 /start   → Show menu
-┃ 🔹 /pair    → Connect WhatsApp
-┃ 🔹 /status  → Check connection
-┃ 🔹 /delete  → Remove session
-┃ 🔹 /listpair → List all users (admin)
-┃ 🔹 /broadcast → Send to all (admin)
-╰══════════════════
-
-❀ The vortex await your command ✿`;
-    tgBot.sendMessage(chatId, menu);
-});
-
-tgBot.onText(/\/pair/, async (msg) => {
-    const chatId = msg.chat.id;
-    tgBot.sendMessage(chatId, 'Veuillez envoyer votre numéro de téléphone avec le code du pays (ex: 33612345678) :');
-    
-    tgBot.once('message', async (replyMsg) => {
-        if (replyMsg.text?.startsWith('/')) return;
-        
-        const phoneNumber = replyMsg.text?.replace(/[^0-9]/g, '');
-        if (!phoneNumber) {
-            return tgBot.sendMessage(chatId, 'Numéro invalide. Veuillez réessayer avec /pair.');
-        }
-
-        const sessionId = phoneNumber;
-        tgBot.sendMessage(chatId, `⏳ Génération du code de connexion pour ${phoneNumber}...`);
-        
-        try {
-            const code = await startBot(sessionId, phoneNumber);
-            if (code) {
-                tgBot.sendMessage(chatId, `✅ Voici votre code de connexion WhatsApp :\n\n*${code}*\n\nEntrez ce code dans WhatsApp > Appareils connectés > Lier un appareil > Lier avec le numéro de téléphone.`);
-            } else {
-                tgBot.sendMessage(chatId, `⚠️ Cette session est déjà connectée ou en cours de connexion.`);
-            }
-        } catch (error: any) {
-            tgBot.sendMessage(chatId, `❌ Erreur : ${error.message}`);
-        }
-    });
-});
-
-tgBot.onText(/\/status/, (msg) => {
-    const chatId = msg.chat.id;
-    tgBot.sendMessage(chatId, 'Veuillez envoyer votre numéro de téléphone pour vérifier le statut :');
-    tgBot.once('message', (replyMsg) => {
-        if (replyMsg.text?.startsWith('/')) return;
-        const phoneNumber = replyMsg.text?.replace(/[^0-9]/g, '');
-        const session = sessions.get(phoneNumber || '');
-        if (session) {
-            tgBot.sendMessage(chatId, `Statut de la session ${phoneNumber} : *${session.status}*`);
-        } else {
-            tgBot.sendMessage(chatId, `Aucune session trouvée pour ${phoneNumber}.`);
-        }
-    });
-});
-
-tgBot.onText(/\/delete/, (msg) => {
-    const chatId = msg.chat.id;
-    tgBot.sendMessage(chatId, 'Veuillez envoyer votre numéro de téléphone pour supprimer la session :');
-    tgBot.once('message', (replyMsg) => {
-        if (replyMsg.text?.startsWith('/')) return;
-        const phoneNumber = replyMsg.text?.replace(/[^0-9]/g, '');
-        const session = sessions.get(phoneNumber || '');
-        if (session) {
-            if (session.sock) {
-                session.sock.logout();
-            }
-            session.status = 'disconnected';
-            sessions.delete(phoneNumber || '');
-            fs.rmSync(`sessions/${phoneNumber}`, { recursive: true, force: true });
-            tgBot.sendMessage(chatId, `✅ Session supprimée avec succès.`);
-        } else {
-            tgBot.sendMessage(chatId, `Aucune session trouvée pour ${phoneNumber}.`);
-        }
-    });
-});
-
-tgBot.onText(/\/listpair/, (msg) => {
-    const chatId = msg.chat.id;
-    let list = '📋 *Sessions actives :*\n\n';
-    sessions.forEach((s, id) => {
-        list += `- ${id} : ${s.status}\n`;
-    });
-    if (sessions.size === 0) list += 'Aucune session active.';
-    tgBot.sendMessage(chatId, list);
-});
-
-tgBot.onText(/\/broadcast (.+)/, (msg, match) => {
-    const chatId = msg.chat.id;
-    const text = match ? match[1] : '';
-    if (!text) return tgBot.sendMessage(chatId, 'Usage: /broadcast <message>');
-    
-    let count = 0;
-    sessions.forEach(async (s) => {
-        if (s.status === 'connected' && s.sock) {
-            const id = s.sock.user.id.split(':')[0] + '@s.whatsapp.net';
-            try {
-                await s.sock.sendMessage(id, { text: `📢 *BROADCAST VORTEX-MD*\n\n${text}` });
-                count++;
-            } catch (e) {}
-        }
-    });
-    tgBot.sendMessage(chatId, `✅ Broadcast envoyé à ${count} sessions.`);
 });
 
 async function startServer() {
